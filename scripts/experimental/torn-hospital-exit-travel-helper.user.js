@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Hospital-Exit Travel Helper (PDA + Tampermonkey) — Auto-Redirect + Preselect + Hospital Badge
 // @namespace    nate3d.torn.hospital-travel-helper
-// @version      1.5
+// @version      1.0
 // @description  Near-instant Travel page redirect when you leave Hospital (timer or meds). Adds a hospital "Monitoring: ON" badge, preselects your default destination, and focuses the Travel button. Compliant: read-only API + DOM only; no auto-clicks or action POSTs.
 // @match        https://www.torn.com/*
 // @grant        GM_getValue
@@ -9,6 +9,10 @@
 // @grant        GM_notification
 // @grant        GM_addStyle
 // @grant        GM_info
+// @homepageURL  https://github.com/nate3D/torn-game-nate3d-scripts
+// @updateURL    https://raw.githubusercontent.com/nate3D/torn-game-nate3d-scripts/main/scripts/experimental/torn-hospital-exit-travel-helper.user.js
+// @downloadURL  https://raw.githubusercontent.com/nate3D/torn-game-nate3d-scripts/main/scripts/experimental/torn-hospital-exit-travel-helper.user.js
+// @license      MIT
 // ==/UserScript==
 
 (function () {
