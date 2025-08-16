@@ -1,8 +1,9 @@
 // ==UserScript==
-// @name         Torn High-Low Helper
+// @name         Nate3D-Torn: High-Low Helper
 // @namespace    nate3d.torn.high-low-helper
 // @version      2.0
 // @description  Hides incorrect button for high-low based on remaining cards.
+// @author       nate3D
 // @match        https://www.torn.com/page.php?sid=highlow
 // @grant        none
 // @homepageURL  https://github.com/nate3D/torn-game-nate3d-scripts

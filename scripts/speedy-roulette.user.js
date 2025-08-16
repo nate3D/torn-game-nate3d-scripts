@@ -1,8 +1,9 @@
 // ==UserScript==
-// @name         Torn: Skip Roulette Animation (TornPDA compatible)
+// @name         Nate3D-Torn: Skip Roulette Animation (TornPDA compatible)
 // @namespace    nate3d.torn.speedy-roulette
 // @version      1.0
 // @description  Skip the roulette spin and instantly reload so you can bet again (works in TornPDA & desktop)
+// @author       nate3D
 // @match        https://www.torn.com/page.php?sid=roulette
 // @match        https://www.torn.com/loader.php?sid=roulette
 // @run-at       document-start

@@ -58,7 +58,7 @@ These scripts aim to:
    - [Tampermonkey for Firefox](https://tampermonkey.net/?ext=dhdg&browser=firefox)
    - [Kiwi Browser for Android](https://kiwibrowser.com/) (supports Tampermonkey)
    - Torn PDA users: paste or import the script via in-app userscript settings.
-   
+
 2. **Click the script link** in the [Scripts](#-scripts) table above.
 3. Tampermonkey should prompt to **install** — click *Install*.
 4. Open Torn and **configure your API key** (script will prompt on first run).
