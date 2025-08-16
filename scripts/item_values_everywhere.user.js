@@ -1,9 +1,8 @@
 // ==UserScript==
 // @name         Nate3D-Torn: Item Values & Shop Deltas Everywhere
-// @namespace    nate3d.torn.item-values-everywhere
-// @version      2.0
-// @description  Shows stack market value on item rows and Δ vs market value on merchant/shop tiles. Browser + Torn PDA.
-// @author       nate3D
+// @namespace    nate3d.torn.item-values-everyhwere
+// @version      2.1
+// @description  Shows stack market value on stash/inventory rows and Δ vs market value on merchant/shop tiles. Browser + Torn PDA.
 // @match        https://www.torn.com/item.php*
 // @match        https://www.torn.com/imarket.php*
 // @match        https://www.torn.com/shop.php*
@@ -19,256 +18,98 @@
 (function () {
     'use strict';
 
-    /** ======================== SETTINGS ======================== **/
     const settings = {
-        // Set to true to attempt scraping live Item Market lowest price (disabled by default; uses market_value instead)
         useItemMarketLive: false,
-        // Where to store our key
         storageKey: 'nate3d.torn.apiKey',
-        // UI: where to pin the key button in case of missing key
         addKeyButton: true,
-        // Color/style knobs
-        colors: {
-            stackValue: '#B53471',   // item page stack value
-            deltaPos: '#21ba45',     // green
-            deltaNeg: '#ff3b30',     // red
-            deltaZero: '#888'        // neutral
-        }
+        colors: { stackValue: '#B53471', deltaPos: '#21ba45', deltaNeg: '#ff3b30', deltaZero: '#888' },
+        debug: false,
     };
 
-    /** ======================== STATE ======================== **/
-    const marketValueByItemId = new Map();   // itemId -> market_value
-    const XHR_OPEN = window.XMLHttpRequest.prototype.open;
+    const marketValueByItemId = new Map();
     let apiKey = null;
 
-    /** ======================== UTILITIES ======================== **/
-    const $ = (sel, root = document) => root.querySelector(sel);
-    const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-    const fmtMoney = n => '$' + (Math.round(Number(n)) || 0).toLocaleString('en-US');
-    const pct = (num) => (num > 0 ? '+' : '') + (num * 100).toFixed(1) + '%';
-    const isPDA = () => /tornpda/i.test(navigator.userAgent) || !!window.TornPDA;
+    const $ = (s, r = document) => r.querySelector(s);
+    const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+    const fmt = n => '$' + (Math.round(Number(n)) || 0).toLocaleString('en-US');
+    const log = (...a) => settings.debug && console.log('[N3 Item Values]', ...a);
 
-    function tryGetApiKey() {
-        // URL param takes precedence
-        const url = new URL(location.href);
-        const fromQuery = url.searchParams.get('apikey') || url.searchParams.get('key');
-        if (isValidKey(fromQuery)) return fromQuery;
-
-        // Our own storage
-        const fromLocal = localStorage.getItem(settings.storageKey);
-        if (isValidKey(fromLocal)) return fromLocal;
-
-        // Torn PDA — try common places
-        try {
-            // 1) some builds expose a global
-            if (window.TornPDA?.getApiKey) {
-                const k = window.TornPDA.getApiKey();
-                if (isValidKey(k)) return k;
-            }
-            // 2) localStorage probes
-            for (const k in localStorage) {
-                const val = localStorage.getItem(k);
-                if (isValidKey(val) && /api.?key|key/i.test(k)) return val;
-                if (looksLikeJSON(val)) {
-                    const obj = safeJSON(val);
-                    const maybe = obj?.apiKey || obj?.apikey || obj?.key;
-                    if (isValidKey(maybe)) return maybe;
-                }
-            }
-        } catch { /* ignore */ }
-
-        return null;
-    }
-
-    function isValidKey(k) {
-        return typeof k === 'string' && /^[A-Za-z0-9]{16,64}$/.test(k);
-    }
-    function looksLikeJSON(s) { return typeof s === 'string' && s.startsWith('{') && s.endsWith('}'); }
-    function safeJSON(s) { try { return JSON.parse(s); } catch { return null; } }
-
+    function addStyle(css) { const el = document.createElement('style'); el.textContent = css; document.documentElement.appendChild(el); }
+    function validKey(k) { return typeof k === 'string' && /^[A-Za-z0-9]{16,64}$/.test(k); }
     function ensureApiKey() {
-        apiKey = tryGetApiKey();
-        if (!apiKey && settings.addKeyButton) injectApiKeyButton();
+        const u = new URL(location.href);
+        const qk = u.searchParams.get('apikey') || u.searchParams.get('key');
+        if (validKey(qk)) { localStorage.setItem(settings.storageKey, qk); return (apiKey = qk); }
+        const ls = localStorage.getItem(settings.storageKey);
+        if (validKey(ls)) return (apiKey = ls);
+        try {
+            if (window.TornPDA?.getApiKey) { const k = window.TornPDA.getApiKey(); if (validKey(k)) return (apiKey = k); }
+            for (const k in localStorage) { const v = localStorage.getItem(k); if (validKey(v) && /api.?key|key/i.test(k)) return (apiKey = v); }
+        } catch { }
+        if (!apiKey && settings.addKeyButton) addKeyButton();
         return apiKey;
     }
-
-    function injectApiKeyButton() {
-        const css = `
-      .n3-key-btn { position: fixed; z-index: 99999; right: 14px; bottom: 14px;
-        background: #111; color: #fff; padding: 8px 10px; border-radius: 10px;
-        font: 600 12px/1.2 Inter, system-ui, sans-serif; opacity:.8; cursor: pointer; }
-      .n3-key-btn:hover { opacity:1; }
-    `;
-        addStyle(css);
-        const btn = document.createElement('button');
-        btn.className = 'n3-key-btn';
-        btn.textContent = 'Set Torn API Key';
-        btn.addEventListener('click', () => {
-            const v = prompt('Enter your Torn API Key (stored locally and used by this userscript only):', apiKey || '');
-            if (isValidKey(v)) {
-                localStorage.setItem(settings.storageKey, v);
-                apiKey = v;
-                alert('API key saved. Reloading values…');
-                refreshAll();
-            } else if (v !== null) {
-                alert('That key does not look valid.');
-            }
-        });
-        document.documentElement.appendChild(btn);
+    function addKeyButton() {
+        addStyle(`.n3-key-btn{position:fixed;right:14px;bottom:14px;z-index:99999;background:#111;color:#fff;padding:8px 10px;border-radius:10px;font:600 12px/1 Inter,system-ui,sans-serif;opacity:.85;cursor:pointer}.n3-key-btn:hover{opacity:1}`);
+        const b = document.createElement('button');
+        b.className = 'n3-key-btn';
+        b.textContent = 'Set Torn API Key';
+        b.onclick = () => { const v = prompt('Enter Torn API Key:', apiKey || ''); if (v && validKey(v)) { localStorage.setItem(settings.storageKey, v); apiKey = v; alert('Saved.'); refresh(); } else if (v) { alert('Invalid key.'); } };
+        document.documentElement.appendChild(b);
     }
 
-    function addStyle(css) {
-        const el = document.createElement('style');
-        el.textContent = css;
-        document.documentElement.appendChild(el);
-    }
-
-    /** ======================== TORN API ======================== **/
-    async function ensureMarketValueIsLoadedForItems(itemIds) {
+    async function ensureMarketValue(itemIds) {
         const need = itemIds.filter(id => !marketValueByItemId.has(id));
-        if (need.length === 0) return;
-
+        if (!need.length) return;
         if (!ensureApiKey()) throw new Error('Missing API key');
-
-        // chunk to keep URL sane
-        const chunks = [];
-        const size = 90;
-        for (let i = 0; i < need.length; i += size) chunks.push(need.slice(i, i + size));
-
-        for (const c of chunks) {
-            const url = `https://api.torn.com/torn/${c.join(',')}?selections=items&key=${apiKey}`;
-            const res = await fetch(url);
-            const json = await res.json();
+        for (let i = 0; i < need.length; i += 90) {
+            const chunk = need.slice(i, i + 90);
+            const url = `https://api.torn.com/torn/${chunk.join(',')}?selections=items&key=${apiKey}`;
+            const res = await fetch(url); const json = await res.json();
             if (!json?.items) throw new Error(json?.error?.error || 'Unknown API error');
-            Object.entries(json.items).forEach(([itemId, data]) => {
-                marketValueByItemId.set(Number(itemId), Number(data.market_value) || 0);
-            });
+            for (const [id, data] of Object.entries(json.items)) marketValueByItemId.set(+id, Number(data.market_value) || 0);
         }
     }
 
-    // Optional live IMarket (disabled by default)
-    async function fetchLiveItemMarketPrice(_itemId, _name) {
-        // TODO: Implement a light-weight fetch of lowest live price if desired.
-        // For now return null to signal “use market_value”.
-        return null;
-    }
+    function observe(root, cb) { const mo = new MutationObserver(() => { clearTimeout(observe._t); observe._t = setTimeout(cb, 80); }); mo.observe(root || document.body, { childList: true, subtree: true }); }
 
-    /** ======================== ITEM PAGE (inventory) ======================== **/
-    function enhanceItemPage() {
-        // Styling so the value never hides behind bubbles
+    /** ---------- INVENTORY / STASH (inline, left-aligned) ---------- **/
+    function runInventory() {
+        // Inline badge next to the name (no padding; no absolute)
         addStyle(`
-      .n3-stack-value {
-        position: absolute; right: .5rem; top: 50%; transform: translateY(-50%);
-        color: ${settings.colors.stackValue}; font-weight: 600; z-index: 5; pointer-events: none;
-        text-shadow: 0 1px 2px rgba(0,0,0,.35);
+      li[data-item][data-rowkey]{position:relative!important}
+      .n3-stack-inline{
+        display:inline-block; margin-left:.5rem; font-weight:700; color:${settings.colors.stackValue};
+        white-space:nowrap; vertical-align:middle; text-shadow:0 1px 2px rgba(0,0,0,.25);
       }
-      .items-cont .name-wrap { position: relative !important; padding-right: 9.5rem !important; }
     `);
 
         const render = async () => {
-            const container = getVisibleCategory();
-            if (!container) return;
-            const rows = Array.from(container.children).filter(li => li.hasAttribute('data-item'));
-            const ids = rows.map(r => Number(r.dataset.item)).filter(Boolean);
-            try {
-                await ensureMarketValueIsLoadedForItems(ids);
-            } catch (e) {
-                console.warn('[N3 Item Values] API error:', e);
-                return;
-            }
+            // Only real rows, not buttons
+            const rows = $$('li[data-item][data-rowkey]').filter(li => !li.closest('ul.actions-wrap'));
+            if (!rows.length) return;
 
-            for (const li of rows) {
-                if (li.dataset.n3ValueInserted === '1') continue;
-                const itemId = Number(li.dataset.item);
-                const nameWrap = li.querySelector('.name-wrap');
-                if (!nameWrap) continue;
-                const qtySpan = nameWrap.querySelector('.qty');
-                const qty = qtySpan ? parseInt(qtySpan.textContent.replace('x', '').trim(), 10) || 1 : 1;
-                const mv = marketValueByItemId.get(itemId) || 0;
-                const total = qty * mv;
+            const info = rows.map(li => {
+                const container = li.querySelector('.title-wrap .name-wrap') || li.querySelector('.title-wrap .title') || li;
+                // Clean any previous badges (old absolute or new inline)
+                container.querySelectorAll('.n3-stack-value,.n3-stack-inline').forEach(n => n.remove());
+                const nameEl = container.querySelector('.name') || container;
+                return { li, id: +li.getAttribute('data-item'), qty: getQty(li), container, nameEl };
+            }).filter(x => x.id);
 
-                const label = document.createElement('span');
-                label.className = 'n3-stack-value';
-                label.textContent = fmtMoney(total);
-                nameWrap.appendChild(label);
-                li.dataset.n3ValueInserted = '1';
-            }
-        };
+            try { await ensureMarketValue(info.map(x => x.id)); } catch (e) { log('API error', e); return; }
 
-        // initial + subsequent loads
-        render();
-        hookItemsXHR(render);
-        observe(containerRoot(), render);
-    }
+            for (const r of info) {
+                const mv = marketValueByItemId.get(r.id) || 0;
+                const total = (r.qty || 1) * mv;
 
-    function getVisibleCategory() {
-        const wrap = document.getElementById('category-wrap');
-        if (!wrap) return null;
-        return Array.from(wrap.children).find(c => c.classList.contains('items-cont') && c.style.display !== 'none');
-    }
+                const tag = document.createElement('span');
+                tag.className = 'n3-stack-inline';
+                tag.textContent = fmt(total);
 
-    function hookItemsXHR(handler) {
-        window.XMLHttpRequest.prototype.open = function (method, url) {
-            if (method?.toUpperCase() === 'POST' && typeof url === 'string' && url.startsWith('item.php?rfcv=')) {
-                this.addEventListener('load', () => setTimeout(handler, 0));
-            }
-            return XHR_OPEN.apply(this, arguments);
-        };
-    }
-
-    /** ======================== SHOP / MERCHANT TILES ======================== **/
-    function enhanceShopTiles() {
-        // CSS badge for deltas
-        addStyle(`
-      .n3-delta-badge {
-        position: absolute; top: 8px; right: 8px; z-index: 5;
-        font-weight: 700; padding: 2px 6px; border-radius: 8px; font-size: 11px;
-        backdrop-filter: blur(2px); background: rgba(0,0,0,.55); color: #fff;
-        box-shadow: 0 1px 2px rgba(0,0,0,.4);
-      }
-      .n3-delta-badge.pos { background: ${hexWithAlpha(settings.colors.deltaPos, .18)}; color: ${settings.colors.deltaPos}; }
-      .n3-delta-badge.neg { background: ${hexWithAlpha(settings.colors.deltaNeg, .18)}; color: ${settings.colors.deltaNeg}; }
-      .n3-delta-badge.zero { background: rgba(128,128,128,.18); color: ${settings.colors.deltaZero}; }
-      .n3-tile-wrap { position: relative !important; }
-    `);
-
-        const render = async () => {
-            const tiles = findShopTiles();
-            if (!tiles.length) return;
-
-            // Collect item ids/names & prices
-            const info = tiles.map(tile => {
-                const itemId = parseItemIdFromTile(tile);
-                const name = parseItemNameFromTile(tile);
-                const price = parseItemPriceFromTile(tile);
-                return { tile, itemId, name, price };
-            }).filter(x => x.itemId && x.price);
-
-            const ids = info.map(x => x.itemId);
-            try {
-                await ensureMarketValueIsLoadedForItems(ids);
-            } catch (e) {
-                console.warn('[N3 Shop Deltas] API error:', e);
-                return;
-            }
-
-            for (const itm of info) {
-                if (itm.tile.dataset.n3DeltaInserted === '1') continue;
-
-                const mvFallback = marketValueByItemId.get(itm.itemId) || 0;
-                const live = settings.useItemMarketLive ? (await fetchLiveItemMarketPrice(itm.itemId, itm.name)) : null;
-                const ref = Number(live || mvFallback) || 0;
-
-                const delta = ref ? (itm.price - ref) : 0;
-                const pctNum = ref ? (delta / ref) : 0;
-
-                const badge = document.createElement('div');
-                badge.className = 'n3-delta-badge ' + (delta > 0 ? 'neg' : delta < 0 ? 'pos' : 'zero');
-                badge.title = `Shop: ${fmtMoney(itm.price)}\nMarket: ${fmtMoney(ref)}\nΔ: ${fmtMoney(delta)} (${pct(pctNum)})`;
-                badge.textContent = `${delta > 0 ? '+' : ''}${fmtMoney(delta)}  (${pct(pctNum)})`;
-
-                (itm.tile.classList.contains('n3-tile-wrap') ? itm.tile : itm.tile.classList.add('n3-tile-wrap'), itm.tile).appendChild(badge);
-                itm.tile.dataset.n3DeltaInserted = '1';
+                // Insert right AFTER the visible name span => keeps left alignment with image+name
+                if (r.nameEl.nextSibling) r.nameEl.parentNode.insertBefore(tag, r.nameEl.nextSibling);
+                else r.nameEl.parentNode.appendChild(tag);
             }
         };
 
@@ -276,90 +117,92 @@
         observe(document.body, render);
     }
 
-    // Helpers to find/parse various shop UIs Torn uses
-    function findShopTiles() {
-        // 1) City shops / merchant cards
-        let tiles = $$('.city-shop, .shop, .items .item, .shop-list .item, .imarket-list .item, li[data-item]');
-        if (tiles.length) return tiles;
-
-        // 2) Fallback: look for anything with a price and data-item
-        tiles = $$('li[data-item], div[data-item]');
-        return tiles;
+    function getQty(li) {
+        const dq = li.getAttribute('data-qty'); if (dq && !isNaN(dq)) return Number(dq);
+        const qAttr = li.querySelector('[data-qty]'); if (qAttr && !isNaN(qAttr.getAttribute('data-qty'))) return Number(qAttr.getAttribute('data-qty'));
+        const cls = li.querySelector('.qty,.i-amount,.amount,.stack,.count'); if (cls) { const n = cls.textContent.replace(/[^\d]/g, ''); if (n) return Number(n); }
+        const nameRegion = li.querySelector('.name-wrap,.name,.title,.label,.text,.desc') || li;
+        const m = /x\s*([0-9]{1,6})\b/i.exec(nameRegion.textContent); if (m) return Number(m[1]);
+        return 1;
     }
 
-    function parseItemIdFromTile(tile) {
-        const d = tile.getAttribute('data-item');
-        if (d) return Number(d);
-        const btn = tile.querySelector('button[data-item]');
-        if (btn) return Number(btn.getAttribute('data-item'));
-        // fallback: many tiles keep an anchor with href including XID=
-        const a = tile.querySelector('a[href*="XID="], a[href*="xid="]');
-        if (a) {
-            const u = new URL(a.href, location.origin);
-            const xid = u.searchParams.get('XID') || u.searchParams.get('xid');
-            if (xid) return Number(xid);
-        }
-        return null;
+    /** ---------- SHOPS / MERCHANTS ---------- **/
+    function runShops() {
+        addStyle(`
+    .n3-delta-inline {
+      display:inline-block; margin-left:.4rem; font-weight:700;
+      padding:2px 6px; border-radius:8px; font-size:11px;
+      vertical-align:middle; white-space:nowrap;
+    }
+    .n3-delta-inline.pos { background: rgba(33,186,69,.18); color: #21ba45; }
+    .n3-delta-inline.neg { background: rgba(255,59,48,.18); color: #ff3b30; }
+    .n3-delta-inline.zero{ background: rgba(128,128,128,.18); color: #888; }
+  `);
+
+        const render = async () => {
+            const tiles = findMerchantTiles();
+            if (!tiles.length) return;
+
+            const rows = tiles.map(t => {
+                const itemId = getMerchantItemId(t);
+                const nameEl = t.querySelector('.desc .name');
+                const priceEl = t.querySelector('.desc .price');
+                const price = priceEl ? parseMoney(priceEl.textContent) : null;
+
+                // Clean previous badges so re-renders don't stack
+                priceEl?.parentElement?.querySelectorAll('.n3-delta-inline').forEach(n => n.remove());
+
+                return { t, itemId, nameEl, priceEl, price };
+            }).filter(r => r.itemId && r.priceEl && r.price != null);
+
+            const ids = rows.map(r => r.itemId);
+            try { await ensureMarketValue(ids); } catch { return; }
+
+            for (const r of rows) {
+                const ref = Number(marketValueByItemId.get(r.itemId)) || 0;
+                const shop = r.price;
+                const delta = ref ? (shop - ref) : 0;
+                const p = ref ? (delta / ref) : 0;
+
+                const badge = document.createElement('span');
+                badge.className = 'n3-delta-inline ' + (delta > 0 ? 'neg' : delta < 0 ? 'pos' : 'zero');
+                badge.title = `Shop: ${fmt(shop)}\nMarket: ${fmt(ref)}\nΔ: ${fmt(delta)} (${(p > 0 ? '+' : '') + (p * 100).toFixed(1)}%)`;
+                badge.textContent = `${delta > 0 ? '+' : ''}${fmt(delta)} (${(p > 0 ? '+' : '') + (p * 100).toFixed(1)}%)`;
+
+                // Insert right after the price text
+                r.priceEl.insertAdjacentElement('afterend', badge);
+            }
+        };
+
+        render();
+        observe(document.body, render);
     }
 
-    function parseItemNameFromTile(tile) {
-        const n = tile.querySelector('.name, .title, .name-wrap .name, .info .name, .c-name, .desc .name');
-        return n ? n.textContent.trim() : null;
+    function findMerchantTiles() {
+        // Match the structure you pasted: li.items-list > li (with .acc-title)
+        // Skip empties / structural dividers.
+        return Array.from(document.querySelectorAll(
+            'ul.buy-flexslider li.slide ul.items-list > li:not(.empty) .acc-title'
+        ));
     }
 
-    function parseItemPriceFromTile(tile) {
-        // Common price selectors (strip $ and commas)
-        const priceEl = tile.querySelector('.price, .cost, .value, .buyPrice, .sellPrice, .right .number, .details .right, .rt .price, .rt .number');
-        if (!priceEl) return null;
-        const m = priceEl.textContent.replace(/[^\d]/g, '');
+    function getMerchantItemId(tile) {
+        const el = tile.querySelector('.item[itemid]');
+        const id = el?.getAttribute('itemid');
+        return id ? Number(id) : null;
+    }
+
+    function parseMoney(txt) {
+        // Turns "$4,500" -> 4500 (also handles "5" / "295")
+        const m = String(txt || '').replace(/[^0-9.-]/g, '');
         return m ? Number(m) : null;
     }
 
-    /** ======================== OBSERVERS / HELPERS ======================== **/
-    function containerRoot() { return document.getElementById('category-wrap') || document.body; }
-
-    function observe(root, cb) {
-        const mo = new MutationObserver(() => {
-            // debounce a bit for large reflows
-            clearTimeout(observe._t);
-            observe._t = setTimeout(cb, 80);
-        });
-        mo.observe(root || document.body, { childList: true, subtree: true });
+    function refresh() {
+        if (/\/item\.php/.test(location.pathname)) runInventory();
+        if (/\/(imarket|shop|shops)\.php/.test(location.pathname)) runShops();
     }
 
-    function refreshAll() {
-        if (/\/item\.php/.test(location.pathname)) enhanceItemPage();
-        if (/\/(imarket|shop|shops)\.php/.test(location.pathname)) enhanceShopTiles();
-    }
-
-    function hexWithAlpha(hex, alpha) {
-        // allow named colors; just fallback black bg
-        if (!/^#([0-9a-f]{3}){1,2}$/i.test(hex)) return `rgba(0,0,0,${alpha})`;
-        const c = hex.slice(1);
-        const vals = c.length === 3 ? c.split('').map(x => parseInt(x + x, 16)) :
-            [c.slice(0, 2), c.slice(2, 4), c.slice(4, 6)].map(h => parseInt(h, 16));
-        return `rgba(${vals[0]},${vals[1]},${vals[2]},${alpha})`;
-    }
-
-    /** ======================== BOOT ======================== **/
-    // Start once DOM is ready enough
-    const start = () => {
-        // Add minimal global CSS once
-        addStyle(`.n3-hide{display:none!important}`);
-
-        if (/\/item\.php/.test(location.pathname)) {
-            enhanceItemPage();
-        } else if (/\/(imarket|shop|shops)\.php/.test(location.pathname)) {
-            enhanceShopTiles();
-        }
-
-        // Safety: if Torn navigates SPA-style, re-run
-        observe(document.body, refreshAll);
-    };
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', start, { once: true });
-    } else {
-        start();
-    }
+    const start = () => { addStyle(`.n3-hide{display:none!important}`); refresh(); observe(document.body, refresh); };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
 })();
