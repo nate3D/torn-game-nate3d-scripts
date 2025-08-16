@@ -33,6 +33,7 @@ These scripts are designed with **Torn’s Terms of Service** and **scripting ru
 ## 📜 Overview
 
 These scripts aim to:
+
 - Automate **monitoring** and **notifications** for in-game events (e.g., leaving hospital).
 - **Navigate** or prepare game pages automatically (no auto-clicking game actions).
 - Provide **visual aids** and **status indicators**.
@@ -42,10 +43,11 @@ These scripts aim to:
 
 ## 📂 Scripts
 
-| Script                          | Description                                                                                                                                                                                                   | Install Link                                                        |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| **Hospital-Exit Travel Helper** | Monitors your hospital status, auto-redirects to the Travel Agency when released (including meds), pre-selects your destination, focuses the Travel button, and shows a hospital “Monitoring” badge with ETA. | [📄 View Script](./scripts/torn-hospital-exit-travel-helper.user.js) |
-| *(add more scripts here)*       | *(description)*                                                                                                                                                                                               | *(link)*                                                            |
+| Script                          | Description                                                                                                                                                                                                   | Install Link                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **Hospital-Exit Travel Helper** | Monitors your hospital status, auto-redirects to the Travel Agency when released (including meds), pre-selects your destination, focuses the Travel button, and shows a hospital “Monitoring” badge with ETA. | [📄 View Script](./scripts/experimental/torn-hospital-exit-travel-helper.user.js) |
+| **Speedy Roulette**             | Speeds up the Roulette game by skipping the spin animation. You will have to re-set your bet manually.                                                                                                        | [📄 View Script](./scripts/speedy-roulette.user.js)                               |
+| *(add more scripts here)*       | *(description)*                                                                                                                                                                                               | *(link)*                                                                         |
 
 ---
 
@@ -69,6 +71,7 @@ Each script may have configurable values at the top of the file (e.g., default t
 Open the `.user.js` file in a text editor to adjust settings.
 
 For **API-based scripts**:
+
 - Create a Torn API key with **`Limited Access`** scope (read-only).
 - Paste it into the script’s settings prompt.
 
@@ -84,9 +87,11 @@ When adding a new script to this repository:
    - Short description
    - Relative link to the script file
 3. (Optional) Include a screenshot in `/docs/images/` and link it.
+
 ---
 
 ## 📚 References
+
 [Torn API Documentation](https://www.torn.com/api.html)
 
 [Torn Scripting Rules](https://www.torn.com/forums.php#/p=threads&f=61&t=16112659)
@@ -94,4 +99,5 @@ When adding a new script to this repository:
 [Tampermonkey Documentation](https://www.tampermonkey.net/documentation.php)
 
 ## 📝 License
+
 This project is licensed under the [MIT License](./LICENSE).
